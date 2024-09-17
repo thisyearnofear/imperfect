@@ -15,16 +15,80 @@ let highlightBack = false;
 let backWarningGiven = false;
 let edges;
 let running = false; // Flag to track if pose detection should run
+let isDragging = false;
+let offsetX, offsetY;
+let canvas; // Declare canvas variable outside of setup
 
 const sketch = (p) => {
   p.setup = async () => {
     var msg = new SpeechSynthesisUtterance("Loading, please wait...");
     window.speechSynthesis.speak(msg);
-    p.createCanvas(640, 480);
+
+    // Set canvas size based on window dimensions
+    const canvasWidth = window.innerWidth < 640 ? window.innerWidth : 640;
+    const canvasHeight = window.innerHeight < 480 ? window.innerHeight : 480;
+
+    // Create the canvas and assign it to the variable
+    canvas = p.createCanvas(canvasWidth, canvasHeight);
+    canvas.id("p5Canvas");
+    canvas.style("position", "absolute");
+
+    // Detect if the user is on mobile or desktop
+    const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+
+    // Set initial position based on device type
+    if (isMobile) {
+      canvas.style("top", "85px"); // Set initial top position for mobile
+      canvas.style("left", "0px"); // Set initial left position for mobile
+      canvas.style("right", "20px"); // Set initial right position
+    } else {
+      canvas.style("top", "112px"); // Set initial top position
+      canvas.style("right", "20px"); // Set initial right position
+      canvas.style("left", "372px"); // Set initial left position
+    }
+
     video = p.createCapture(p.VIDEO, videoReady);
+
     video.hide();
 
     await init();
+  };
+
+  p.mousePressed = () => {
+    // Check if the mouse is over the canvas
+    if (p.mouseX > 0 && p.mouseX < 640 && p.mouseY > 0 && p.mouseY < 480) {
+      isDragging = true;
+      offsetX = p.mouseX - parseInt(p.select("#p5Canvas").style("left"));
+      offsetY = p.mouseY - parseInt(p.select("#p5Canvas").style("top"));
+    }
+  };
+
+  p.mouseReleased = () => {
+    isDragging = false;
+  };
+
+  p.mouseDragged = () => {
+    if (isDragging) {
+      const newTop = p.mouseY - offsetY;
+      const newLeft = p.mouseX - offsetX; // Calculate new left position directly
+      p.select("#p5Canvas").style("top", `${newTop}px`);
+      p.select("#p5Canvas").style("left", `${newLeft}px`); // Use left instead of right
+    }
+  };
+
+  p.keyPressed = () => {
+    const currentTop = parseInt(canvas.style("top"));
+    const currentLeft = parseInt(canvas.style("left")); // Change from right to left
+
+    if (p.keyCode === p.UP_ARROW) {
+      canvas.style("top", `${currentTop - 10}px`);
+    } else if (p.keyCode === p.DOWN_ARROW) {
+      canvas.style("top", `${currentTop + 10}px`);
+    } else if (p.keyCode === p.LEFT_ARROW) {
+      canvas.style("left", `${currentLeft - 10}px`); // Change from right to left
+    } else if (p.keyCode === p.RIGHT_ARROW) {
+      canvas.style("left", `${currentLeft + 10}px`); // Change from right to left
+    }
   };
 
   p.draw = () => {
@@ -55,6 +119,12 @@ const sketch = (p) => {
     } else {
       p.text("Loading, please wait...", 100, 90);
     }
+  };
+
+  p.windowResized = () => {
+    const canvasWidth = window.innerWidth < 640 ? window.innerWidth : 640;
+    const canvasHeight = window.innerHeight < 480 ? window.innerHeight : 480;
+    p.resizeCanvas(canvasWidth, canvasHeight);
   };
 };
 async function init() {

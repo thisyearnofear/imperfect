@@ -10,6 +10,7 @@ import dynamic from "next/dynamic";
 import { Leaderboard } from "../components/Leaderboard";
 import CustomButton from "../components/CustomButton";
 import { setup, stop } from "../components/Webcam";
+import styles from "./page.module.css";
 
 export default function Page() {
   const { address } = useAccount();
@@ -23,6 +24,10 @@ export default function Page() {
   const [exerciseMode, setExerciseMode] = useState<"squat" | "pushup">("squat");
   const [timeSpent, setTimeSpent] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
+  const [canvasPosition, setCanvasPosition] = useState({
+    top: "20px",
+    right: "20px",
+  });
 
   useEffect(() => {
     if (isTracking) {
@@ -85,6 +90,10 @@ export default function Page() {
     setTimeSpent(time);
   };
 
+  const moveCanvas = (newTop: string, newRight: string) => {
+    setCanvasPosition({ top: newTop, right: newRight });
+  };
+
   return (
     <div className="flex h-full w-96 max-w-full flex-col px-1 md:w-[1008px]">
       <section className="mt-6 mb-6 flex w-full flex-col md:flex-row">
@@ -118,31 +127,32 @@ export default function Page() {
             ))}
           </div>
           <div className="flex-grow flex items-center justify-center relative">
-            {" "}
+            {/* This div is for the loading and tracking messages */}
+            <div className="absolute inset-0 flex items-center justify-center bg-transparent text-white">
+              {isLoading ? (
+                <div className="flex items-center justify-center">
+                  <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
+                </div>
+              ) : !isTracking ? (
+                <p>Press Start to begin tracking</p>
+              ) : null}
+            </div>
+
+            {/* This div is for the p5.js canvas */}
             {(activeTab === "Squat" || activeTab === "Pushup") && (
-              <div className="w-full h-full relative">
-                {isLoading ? (
-                  <div className="w-full h-full flex items-center justify-center bg-black bg-opacity-50 text-white">
-                    <div className="animate-spin rounded-full h-32 w-32 border-t-2 border-b-2 border-white"></div>
-                  </div>
-                ) : isTracking ? (
+              <div
+                id="canvasContainer"
+                style={{
+                  position: "absolute",
+                  top: canvasPosition.top,
+                  right: canvasPosition.right,
+                }}
+              >
+                {isTracking && (
                   <div
                     id="canvasContainer"
-                    className="w-full h-full flex items-center justify-center"
-                  >
-                    <video
-                      id="webcam"
-                      className="absolute inset-0 w-full h-full"
-                      autoPlay
-                      muted
-                    ></video>{" "}
-                    {/* Ensure this is the only video element */}
-                    {/* The canvas and video elements will be created by webcam.js */}
-                  </div>
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center bg-black text-white">
-                    <p>Press Start to begin tracking</p>
-                  </div>
+                    className={styles.canvasWrapper}
+                  ></div>
                 )}
                 {showSummary && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 text-white">

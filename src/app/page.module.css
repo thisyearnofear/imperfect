@@ -1,0 +1,23 @@
+/* src/app/page.module.css */
+
+.customCanvasContainer {
+  position: absolute; /* Allow it to be positioned freely */
+  width: 640px; /* Set a specific width */
+  height: 480px; /* Set a specific height */
+  z-index: 100; /* Ensure this is higher than other elements */
+}
+
+.canvasWrapper {
+  position: absolute;
+  top: 80px;
+  right: 20px;
+  width: 640px;
+  height: 480px;
+  z-index: 20; /* Ensure this is higher than other elements */
+}
+
+.canvasWrapper canvas {
+  width: 100% !important;
+  height: 100% !important;
+  z-index: 30; /* Ensure canvas is on top */
+}
