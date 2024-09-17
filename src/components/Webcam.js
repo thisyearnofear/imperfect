@@ -1,4 +1,7 @@
 import p5 from "p5";
+import * as poseDetection from "@tensorflow-models/pose-detection";
+import * as tf from "@tensorflow/tfjs-core";
+import "@tensorflow/tfjs-backend-webgl";
 
 let detector;
 let detectorConfig;
@@ -14,37 +17,49 @@ let downPosition = false;
 let highlightBack = false;
 let backWarningGiven = false;
 let edges;
-let running = false; // Flag to track if pose detection should run
+let running = false;
 let isDragging = false;
 let offsetX, offsetY;
-let canvas; // Declare canvas variable outside of setup
+let canvas;
+let startTime;
+let elapsedTime = 0;
+let timerInterval;
+let timerStarted = false;
+const EXERCISE_DURATION = 60000;
+
+console.log("Setting up webcam..."); // Before accessing window
 
 const sketch = (p) => {
   p.setup = async () => {
-    var msg = new SpeechSynthesisUtterance("Loading, please wait...");
-    window.speechSynthesis.speak(msg);
+    console.log("Window is defined");
+    if (typeof window !== "undefined") {
+      var msg = new SpeechSynthesisUtterance("Loading, please wait...");
+      window.speechSynthesis.speak(msg);
+    }
 
-    // Set canvas size based on window dimensions
-    const canvasWidth = window.innerWidth < 640 ? window.innerWidth : 640;
-    const canvasHeight = window.innerHeight < 480 ? window.innerHeight : 480;
+    let canvasWidth, canvasHeight;
+    if (typeof window !== "undefined") {
+      canvasWidth = window.innerWidth < 640 ? window.innerWidth : 640;
+      canvasHeight = window.innerHeight < 480 ? window.innerHeight : 480;
+    }
 
-    // Create the canvas and assign it to the variable
     canvas = p.createCanvas(canvasWidth, canvasHeight);
     canvas.id("p5Canvas");
     canvas.style("position", "absolute");
 
-    // Detect if the user is on mobile or desktop
-    const isMobile = /Mobi|Android/i.test(navigator.userAgent);
+    let isMobile = false;
+    if (typeof window !== "undefined") {
+      isMobile = /Mobi|Android/i.test(navigator.userAgent);
+    }
 
-    // Set initial position based on device type
     if (isMobile) {
-      canvas.style("top", "85px"); // Set initial top position for mobile
-      canvas.style("left", "0px"); // Set initial left position for mobile
-      canvas.style("right", "20px"); // Set initial right position
+      canvas.style("top", "85px");
+      canvas.style("left", "0px");
+      canvas.style("right", "20px");
     } else {
-      canvas.style("top", "112px"); // Set initial top position
-      canvas.style("right", "20px"); // Set initial right position
-      canvas.style("left", "372px"); // Set initial left position
+      canvas.style("top", "112px");
+      canvas.style("right", "20px");
+      canvas.style("left", "372px");
     }
 
     video = p.createCapture(p.VIDEO, videoReady);
@@ -55,7 +70,6 @@ const sketch = (p) => {
   };
 
   p.mousePressed = () => {
-    // Check if the mouse is over the canvas
     if (p.mouseX > 0 && p.mouseX < 640 && p.mouseY > 0 && p.mouseY < 480) {
       isDragging = true;
       offsetX = p.mouseX - parseInt(p.select("#p5Canvas").style("left"));
@@ -70,64 +84,56 @@ const sketch = (p) => {
   p.mouseDragged = () => {
     if (isDragging) {
       const newTop = p.mouseY - offsetY;
-      const newLeft = p.mouseX - offsetX; // Calculate new left position directly
+      const newLeft = p.mouseX - offsetX;
       p.select("#p5Canvas").style("top", `${newTop}px`);
-      p.select("#p5Canvas").style("left", `${newLeft}px`); // Use left instead of right
+      p.select("#p5Canvas").style("left", `${newLeft}px`);
     }
   };
 
   p.keyPressed = () => {
     const currentTop = parseInt(canvas.style("top"));
-    const currentLeft = parseInt(canvas.style("left")); // Change from right to left
+    const currentLeft = parseInt(canvas.style("left"));
 
     if (p.keyCode === p.UP_ARROW) {
       canvas.style("top", `${currentTop - 10}px`);
     } else if (p.keyCode === p.DOWN_ARROW) {
       canvas.style("top", `${currentTop + 10}px`);
     } else if (p.keyCode === p.LEFT_ARROW) {
-      canvas.style("left", `${currentLeft - 10}px`); // Change from right to left
+      canvas.style("left", `${currentLeft - 10}px`);
     } else if (p.keyCode === p.RIGHT_ARROW) {
-      canvas.style("left", `${currentLeft + 10}px`); // Change from right to left
+      canvas.style("left", `${currentLeft + 10}px`);
     }
   };
 
   p.draw = () => {
-    if (!running) return; // Exit draw loop if not running
+    if (!running) return;
 
     p.background(220);
     p.translate(p.width, 0);
     p.scale(-1, 1);
     p.image(video, 0, 0, video.width, video.height);
 
-    // Draw keypoints and skeleton
     drawKeypoints(p);
     if (skeleton) {
       drawSkeleton(p, edges);
     }
 
-    // Write text
-    p.fill(255);
-    p.strokeWeight(2);
-    p.stroke(51);
-    p.translate(p.width, 0);
-    p.scale(-1, 1);
-    p.textSize(40);
-
-    if (poses && poses.length > 0) {
-      let pushupString = `Push-ups completed: ${reps}`;
-      p.text(pushupString, 100, 90);
-    } else {
-      p.text("Loading, please wait...", 100, 90);
-    }
+    drawExerciseCounter(p);
+    drawTimer(p);
   };
 
   p.windowResized = () => {
-    const canvasWidth = window.innerWidth < 640 ? window.innerWidth : 640;
-    const canvasHeight = window.innerHeight < 480 ? window.innerHeight : 480;
-    p.resizeCanvas(canvasWidth, canvasHeight);
+    let canvasWidth, canvasHeight;
+    if (typeof window !== "undefined") {
+      canvasWidth = window.innerWidth < 640 ? window.innerWidth : 640;
+      canvasHeight = window.innerHeight < 480 ? window.innerHeight : 480;
+      p.resizeCanvas(canvasWidth, canvasHeight);
+    }
   };
 };
+
 async function init() {
+  await tf.setBackend("webgl");
   detectorConfig = {
     modelType: poseDetection.movenet.modelType.SINGLEPOSE_THUNDER,
   };
@@ -149,15 +155,16 @@ async function init() {
     "12,14": "c",
     "14,16": "c",
   };
-  running = true; // Set running flag to true
+  running = true;
   await getPoses();
 }
+
 async function videoReady() {
   //console.log('video ready');
 }
 
 async function getPoses() {
-  if (!running) return; // Exit if not running
+  if (!running) return;
   if (video.elt.readyState === 4 && video.width > 0 && video.height > 0) {
     poses = await detector.estimatePoses(video.elt);
   }
@@ -185,7 +192,7 @@ function drawKeypoints(p) {
       updateArmAngle();
       updateBackAngle();
       inUpPosition();
-      inDownPosition(p); // Pass p to inDownPosition
+      inDownPosition(p);
     }
   }
 }
@@ -201,8 +208,8 @@ function inDownPosition(p) {
   if (
     highlightBack == false &&
     elbowAboveNose &&
-    p.abs(elbowAngle) > 70 && // Use p.abs instead of abs
-    p.abs(elbowAngle) < 100 // Use p.abs instead of abs
+    p.abs(elbowAngle) > 70 &&
+    p.abs(elbowAngle) < 100
   ) {
     //console.log('In down position')
     if (upPosition == true) {
@@ -214,7 +221,6 @@ function inDownPosition(p) {
   }
 }
 
-// Draws lines between the keypoints
 function drawSkeleton(p, edges) {
   const confidence_threshold = 0.5;
 
@@ -249,12 +255,29 @@ function drawSkeleton(p, edges) {
   }
 }
 
+function resetCanvas() {
+  poses = [];
+  p.clear();
+  p.background(220);
+}
+
+function stop(onStop) {
+  running = false;
+  timerStarted = false;
+  clearInterval(timerInterval);
+  if (video) {
+    video.stop();
+    video.remove();
+  }
+  if (canvas) {
+    canvas.remove();
+  }
+  if (onStop) {
+    onStop(reps, Math.floor(elapsedTime / 1000));
+  }
+}
+
 function updateArmAngle() {
-  /*
-  rightWrist = poses[0].keypoints[10];
-  rightShoulder = poses[0].keypoints[6];
-  rightElbow = poses[0].keypoints[8];
-  */
   const leftWrist = poses[0].keypoints[9];
   const leftShoulder = poses[0].keypoints[5];
   const leftElbow = poses[0].keypoints[7];
@@ -310,23 +333,86 @@ function inUpPosition() {
   if (elbowAngle > 170 && elbowAngle < 200) {
     //console.log('In up position')
     if (downPosition == true) {
-      var msg = new SpeechSynthesisUtterance(String(reps + 1)); // Use String to convert number to string
+      var msg = new SpeechSynthesisUtterance(String(reps + 1));
       window.speechSynthesis.speak(msg);
       reps = reps + 1;
+
+      // Start the timer on the first rep
+      if (!timerStarted) {
+        startTimer();
+      }
     }
     upPosition = true;
     downPosition = false;
   }
 }
 
-export function setup() {
-  new p5(sketch);
-}
+function drawTimer(p) {
+  p.push();
+  p.translate(p.width / 2, p.height - 60);
+  p.scale(-1, 1);
+  p.fill(0, 0, 0, 200);
+  p.noStroke();
+  p.rect(-150, -30, 300, 60, 10);
+  p.fill(255);
+  p.textAlign(p.CENTER, p.CENTER);
+  p.textSize(24);
 
-export function stop() {
-  running = false; // Set running flag to false
-  if (video) {
-    video.stop(); // Stop the video feed
-    video.remove(); // Remove the video element
+  if (!timerStarted) {
+    p.text("Do a rep to start", 0, 0);
+  } else {
+    const currentTime = Date.now();
+    elapsedTime = Math.min(currentTime - startTime, EXERCISE_DURATION);
+    const remainingTime = Math.ceil((EXERCISE_DURATION - elapsedTime) / 1000);
+    p.text(`Time remaining: ${remainingTime}s`, 0, 0);
+  }
+
+  p.pop();
+
+  if (elapsedTime >= EXERCISE_DURATION) {
+    stop();
   }
 }
+
+function drawExerciseCounter(p) {
+  p.push();
+  p.translate(p.width / 2, p.height - 130);
+  p.scale(-1, 1);
+  p.fill(0, 0, 0, 200);
+  p.noStroke();
+  p.rect(-150, -30, 300, 60, 10);
+  p.fill(255);
+  p.textAlign(p.CENTER, p.CENTER);
+  p.textSize(24);
+  p.text(`Push-ups completed: ${reps}`, 0, 0);
+  p.pop();
+}
+
+function startTimer() {
+  timerStarted = true;
+  startTime = Date.now();
+  timerInterval = setInterval(() => {
+    if (running) {
+      const currentTime = Date.now();
+      elapsedTime = Math.min(currentTime - startTime, EXERCISE_DURATION);
+      if (elapsedTime >= EXERCISE_DURATION) {
+        stop();
+      }
+    }
+  }, 1000);
+}
+
+function startExercise() {
+  running = true;
+  timerStarted = false;
+  reps = 0;
+  elapsedTime = 0;
+}
+
+export async function setup() {
+  await tf.ready();
+  new p5(sketch);
+  startExercise();
+}
+
+export { stop, reps, elapsedTime };

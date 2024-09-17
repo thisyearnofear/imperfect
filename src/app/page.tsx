@@ -24,6 +24,7 @@ export default function Page() {
   const [exerciseMode, setExerciseMode] = useState<"squat" | "pushup">("squat");
   const [timeSpent, setTimeSpent] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
+
   const [canvasPosition, setCanvasPosition] = useState({
     top: "20px",
     right: "20px",

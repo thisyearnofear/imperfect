@@ -29,7 +29,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "src/custom.d.ts",
-    "src/components/ExerciseTracker.js"
+    "src/components/ExerciseTracker.js",
+    "src/components/Webcam.js"
   ],
   "exclude": ["node_modules"]
 }
